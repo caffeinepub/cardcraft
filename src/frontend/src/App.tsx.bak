@@ -1,0 +1,3339 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Slider } from "@/components/ui/slider";
+import { Toaster } from "@/components/ui/sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  ArrowLeft,
+  Download,
+  Image,
+  Palette,
+  Pentagon,
+  Plus,
+  Search,
+  Shapes,
+  Sparkles,
+  Trash2,
+  Type,
+} from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type TextElement = {
+  id: string;
+  type: "text";
+  content: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  color: string;
+  fontFamily: string;
+  bold: boolean;
+  italic: boolean;
+};
+
+type ShapeElement = {
+  id: string;
+  type: "shape";
+  shapeType: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fillColor: string;
+  rotation: number;
+};
+
+type CardElement = TextElement | ShapeElement;
+
+type Card = {
+  id: string;
+  templateId: string;
+  background: string;
+  backgroundType: "solid" | "gradient" | "pattern";
+  patternStyle?: string;
+  patternColor?: string;
+  elements: CardElement[];
+};
+
+type Template = {
+  id: string;
+  name: string;
+  category: string;
+  background: string;
+  backgroundType: "solid" | "gradient" | "pattern";
+  patternStyle?: string;
+  previewElements: {
+    text: string;
+    x: number;
+    y: number;
+    fontSize: number;
+    color: string;
+    bold?: boolean;
+    italic?: boolean;
+  }[];
+  emoji: string;
+  decorStyle?: string;
+};
+
+// ─── Shape Definitions ────────────────────────────────────────────────────────
+
+const SHAPE_DEFS: {
+  id: string;
+  label: string;
+  emoji: string;
+  path?: string;
+  primitive?: string;
+}[] = [
+  { id: "circle", label: "Circle", emoji: "⬤", primitive: "circle" },
+  { id: "square", label: "Square", emoji: "■", primitive: "rect" },
+  { id: "rectangle", label: "Rectangle", emoji: "▬", primitive: "rect-wide" },
+  {
+    id: "triangle",
+    label: "Triangle",
+    emoji: "▲",
+    path: "M 50 5 L 95 90 L 5 90 Z",
+  },
+  {
+    id: "star",
+    label: "Star",
+    emoji: "★",
+    path: "M 50 5 L 61 35 L 95 35 L 68 57 L 79 91 L 50 70 L 21 91 L 32 57 L 5 35 L 39 35 Z",
+  },
+  {
+    id: "heart",
+    label: "Heart",
+    emoji: "❤",
+    path: "M 50 85 C 10 55 0 30 15 17 C 28 5 50 20 50 20 C 50 20 72 5 85 17 C 100 30 90 55 50 85 Z",
+  },
+  {
+    id: "diamond",
+    label: "Diamond",
+    emoji: "◆",
+    path: "M 50 5 L 95 50 L 50 95 L 5 50 Z",
+  },
+  {
+    id: "pentagon",
+    label: "Pentagon",
+    emoji: "⬠",
+    path: "M 50 5 L 95 36 L 79 90 L 21 90 L 5 36 Z",
+  },
+  {
+    id: "hexagon",
+    label: "Hexagon",
+    emoji: "⬡",
+    path: "M 50 5 L 90 27.5 L 90 72.5 L 50 95 L 10 72.5 L 10 27.5 Z",
+  },
+  {
+    id: "burst",
+    label: "Burst",
+    emoji: "✸",
+    path: "M 50 2 L 54 38 L 85 15 L 65 47 L 98 50 L 65 53 L 85 85 L 54 62 L 50 98 L 46 62 L 15 85 L 35 53 L 2 50 L 35 47 L 15 15 L 46 38 Z",
+  },
+  {
+    id: "arrow",
+    label: "Arrow",
+    emoji: "➤",
+    path: "M 5 38 L 60 38 L 60 18 L 95 50 L 60 82 L 60 62 L 5 62 Z",
+  },
+  {
+    id: "ribbon",
+    label: "Banner",
+    emoji: "🎀",
+    path: "M 5 25 L 95 25 L 85 50 L 95 75 L 5 75 L 15 50 Z",
+  },
+  {
+    id: "flower",
+    label: "Flower",
+    emoji: "✿",
+    path: "M 50 20 C 50 20 60 5 70 15 C 80 25 65 35 65 35 C 65 35 85 30 85 45 C 85 60 65 55 65 55 C 65 55 80 65 70 75 C 60 85 50 70 50 70 C 50 70 40 85 30 75 C 20 65 35 55 35 55 C 35 55 15 60 15 45 C 15 30 35 35 35 35 C 35 35 20 25 30 15 C 40 5 50 20 50 20 Z",
+  },
+  {
+    id: "crown",
+    label: "Crown",
+    emoji: "👑",
+    path: "M 5 80 L 5 35 L 25 60 L 50 10 L 75 60 L 95 35 L 95 80 Z",
+  },
+];
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+const TEMPLATES: Template[] = [
+  // ── Birthday ──
+  {
+    id: "birthday-1",
+    name: "Happy Birthday",
+    category: "Birthday",
+    background:
+      "linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #feada6 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Birthday!",
+        x: 50,
+        y: 35,
+        fontSize: 38,
+        color: "#7c2d6b",
+        bold: true,
+      },
+      {
+        text: "Wishing you a magical day 🎉",
+        x: 50,
+        y: 58,
+        fontSize: 17,
+        color: "#9d3b88",
+        italic: true,
+      },
+      { text: "🎂 🎈 🎊", x: 50, y: 76, fontSize: 22, color: "#7c2d6b" },
+    ],
+    emoji: "🎂",
+    decorStyle: "border-dots",
+  },
+  {
+    id: "birthday-2",
+    name: "Birthday Bash",
+    category: "Birthday",
+    background: "linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "It's Your Day!",
+        x: 50,
+        y: 35,
+        fontSize: 42,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "Celebrate in style 🎊",
+        x: 50,
+        y: 58,
+        fontSize: 18,
+        color: "#f0e6ff",
+        italic: true,
+      },
+      { text: "🎉 🥳 🎈", x: 50, y: 76, fontSize: 22, color: "#fff" },
+    ],
+    emoji: "🎉",
+    decorStyle: "confetti",
+  },
+  {
+    id: "birthday-3",
+    name: "Golden Birthday",
+    category: "Birthday",
+    background:
+      "linear-gradient(135deg, #1a0533 0%, #4a0e8f 50%, #d4af37 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "✨ Birthday ✨",
+        x: 50,
+        y: 28,
+        fontSize: 20,
+        color: "#d4af37",
+        italic: true,
+      },
+      {
+        text: "Happy Birthday!",
+        x: 50,
+        y: 48,
+        fontSize: 40,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "May all your wishes come true",
+        x: 50,
+        y: 68,
+        fontSize: 16,
+        color: "#fde68a",
+        italic: true,
+      },
+    ],
+    emoji: "👑",
+    decorStyle: "luxe",
+  },
+  // ── Wedding ──
+  {
+    id: "wedding-1",
+    name: "Classic Wedding",
+    category: "Wedding",
+    background:
+      "linear-gradient(135deg, #fdf8f0 0%, #f5e6d3 50%, #e8d5c4 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Sarah & James",
+        x: 50,
+        y: 30,
+        fontSize: 32,
+        color: "#8b6b4e",
+        bold: true,
+        italic: true,
+      },
+      {
+        text: "Together Forever",
+        x: 50,
+        y: 50,
+        fontSize: 20,
+        color: "#a07856",
+        italic: true,
+      },
+      {
+        text: "💍 We're Getting Married 💍",
+        x: 50,
+        y: 70,
+        fontSize: 15,
+        color: "#8b6b4e",
+      },
+    ],
+    emoji: "💍",
+    decorStyle: "floral",
+  },
+  {
+    id: "wedding-2",
+    name: "Rose Gold Wedding",
+    category: "Wedding",
+    background:
+      "linear-gradient(135deg, #2d1b4e 0%, #7b3f6e 50%, #c4927a 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "~ Wedding Invitation ~",
+        x: 50,
+        y: 25,
+        fontSize: 16,
+        color: "#f0c8b8",
+        italic: true,
+      },
+      {
+        text: "Emily & Robert",
+        x: 50,
+        y: 45,
+        fontSize: 34,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "Join us in celebration",
+        x: 50,
+        y: 65,
+        fontSize: 17,
+        color: "#f0c8b8",
+        italic: true,
+      },
+      { text: "❤️ June 2026 ❤️", x: 50, y: 80, fontSize: 15, color: "#f0c8b8" },
+    ],
+    emoji: "💒",
+  },
+  {
+    id: "wedding-3",
+    name: "Minimalist Vows",
+    category: "Wedding",
+    background: "linear-gradient(135deg, #f8f4ef 0%, #ede0d4 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "A & B",
+        x: 50,
+        y: 30,
+        fontSize: 60,
+        color: "#c9a882",
+        bold: true,
+      },
+      {
+        text: "Two souls, one heart",
+        x: 50,
+        y: 60,
+        fontSize: 18,
+        color: "#9d7a56",
+        italic: true,
+      },
+      { text: "∞  Forever  ∞", x: 50, y: 78, fontSize: 16, color: "#c9a882" },
+    ],
+    emoji: "🕊️",
+    decorStyle: "minimal-luxe",
+  },
+  // ── Anniversary ──
+  {
+    id: "anniversary-1",
+    name: "Happy Anniversary",
+    category: "Anniversary",
+    background:
+      "linear-gradient(135deg, #880e4f 0%, #c2185b 50%, #f06292 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Anniversary",
+        x: 50,
+        y: 35,
+        fontSize: 34,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "🌹 Still falling for you 🌹",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#fce4ec",
+        italic: true,
+      },
+      {
+        text: "With love, always",
+        x: 50,
+        y: 74,
+        fontSize: 15,
+        color: "#f8bbd0",
+      },
+    ],
+    emoji: "🌹",
+  },
+  {
+    id: "anniversary-2",
+    name: "Golden Anniversary",
+    category: "Anniversary",
+    background:
+      "linear-gradient(135deg, #1a1200 0%, #4a3500 50%, #c9a227 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "50 Years",
+        x: 50,
+        y: 30,
+        fontSize: 52,
+        color: "#ffd700",
+        bold: true,
+      },
+      {
+        text: "of Love & Laughter",
+        x: 50,
+        y: 55,
+        fontSize: 22,
+        color: "#fff",
+        italic: true,
+      },
+      {
+        text: "🏅 Golden Anniversary 🏅",
+        x: 50,
+        y: 74,
+        fontSize: 16,
+        color: "#ffd700",
+      },
+    ],
+    emoji: "🏅",
+    decorStyle: "luxe",
+  },
+  // ── Thank You ──
+  {
+    id: "thank-you-1",
+    name: "Thank You",
+    category: "Thank You",
+    background: "linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Thank You!",
+        x: 50,
+        y: 35,
+        fontSize: 42,
+        color: "#276b3b",
+        bold: true,
+      },
+      {
+        text: "Your kindness means everything 🌿",
+        x: 50,
+        y: 58,
+        fontSize: 17,
+        color: "#2e7d42",
+        italic: true,
+      },
+      {
+        text: "💚 Truly grateful 💚",
+        x: 50,
+        y: 76,
+        fontSize: 14,
+        color: "#276b3b",
+      },
+    ],
+    emoji: "🙏",
+  },
+  {
+    id: "thank-you-2",
+    name: "Elegant Thanks",
+    category: "Thank You",
+    background:
+      "linear-gradient(135deg, #1a2a1a 0%, #2d5a27 50%, #7ab648 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "✦ Thank You ✦",
+        x: 50,
+        y: 30,
+        fontSize: 38,
+        color: "#f0fce8",
+        bold: true,
+      },
+      {
+        text: "Words can't express our gratitude",
+        x: 50,
+        y: 55,
+        fontSize: 16,
+        color: "#c8f0b0",
+        italic: true,
+      },
+      {
+        text: "From the bottom of our hearts",
+        x: 50,
+        y: 72,
+        fontSize: 14,
+        color: "#a8e090",
+      },
+    ],
+    emoji: "🌿",
+  },
+  // ── Congratulations ──
+  {
+    id: "congrats-1",
+    name: "Congratulations!",
+    category: "Congrats",
+    background: "linear-gradient(135deg, #f7971e 0%, #ffd200 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "🏆 Congratulations! 🏆",
+        x: 50,
+        y: 35,
+        fontSize: 32,
+        color: "#7c4f00",
+        bold: true,
+      },
+      {
+        text: "You did it! So proud of you",
+        x: 50,
+        y: 57,
+        fontSize: 18,
+        color: "#8a5800",
+        italic: true,
+      },
+      {
+        text: "★ You're Amazing ★",
+        x: 50,
+        y: 76,
+        fontSize: 15,
+        color: "#6b3e00",
+      },
+    ],
+    emoji: "🏆",
+  },
+  {
+    id: "congrats-2",
+    name: "Big Achievement",
+    category: "Congrats",
+    background:
+      "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "You Did It!",
+        x: 50,
+        y: 30,
+        fontSize: 46,
+        color: "#4fc3f7",
+        bold: true,
+      },
+      {
+        text: "Congratulations on this milestone",
+        x: 50,
+        y: 55,
+        fontSize: 16,
+        color: "#b3e5fc",
+        italic: true,
+      },
+      {
+        text: "🌟 The sky's the limit 🌟",
+        x: 50,
+        y: 74,
+        fontSize: 15,
+        color: "#81d4fa",
+      },
+    ],
+    emoji: "🌟",
+  },
+  // ── Love / Romance ──
+  {
+    id: "love-1",
+    name: "With All My Love",
+    category: "Love",
+    background:
+      "linear-gradient(135deg, #4c0519 0%, #9f1239 50%, #e11d48 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "With All My Love 🌹",
+        x: 50,
+        y: 35,
+        fontSize: 34,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "Forever yours",
+        x: 50,
+        y: 57,
+        fontSize: 20,
+        color: "#fecdd3",
+        italic: true,
+      },
+      {
+        text: "❤️ Always & Forever ❤️",
+        x: 50,
+        y: 76,
+        fontSize: 14,
+        color: "#fda4af",
+      },
+    ],
+    emoji: "❤️",
+  },
+  {
+    id: "love-2",
+    name: "Be My Valentine",
+    category: "Love",
+    background:
+      "linear-gradient(135deg, #881337 0%, #be123c 50%, #fda4af 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Be My Valentine ❤️",
+        x: 50,
+        y: 35,
+        fontSize: 34,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "You make every day special",
+        x: 50,
+        y: 58,
+        fontSize: 17,
+        color: "#fecdd3",
+        italic: true,
+      },
+      { text: "💕 XOXO 💕", x: 50, y: 76, fontSize: 18, color: "#fff" },
+    ],
+    emoji: "💕",
+  },
+  // ── Baby Shower ──
+  {
+    id: "babyshower-1",
+    name: "It's a Baby!",
+    category: "Baby Shower",
+    background:
+      "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 50%, #7dd3fc 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Baby Shower! 👶",
+        x: 50,
+        y: 35,
+        fontSize: 38,
+        color: "#0c4a6e",
+        bold: true,
+      },
+      {
+        text: "A new little star is arriving",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#075985",
+        italic: true,
+      },
+      { text: "🌙 ⭐ 🍼 ⭐ 🌙", x: 50, y: 76, fontSize: 18, color: "#0369a1" },
+    ],
+    emoji: "👶",
+  },
+  {
+    id: "babyshower-2",
+    name: "Baby Girl",
+    category: "Baby Shower",
+    background:
+      "linear-gradient(135deg, #fdf2f8 0%, #fce7f3 50%, #fbcfe8 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "It's a Girl! 🎀",
+        x: 50,
+        y: 33,
+        fontSize: 38,
+        color: "#9d174d",
+        bold: true,
+      },
+      {
+        text: "Welcome to the world, little one",
+        x: 50,
+        y: 56,
+        fontSize: 16,
+        color: "#be185d",
+        italic: true,
+      },
+      { text: "🌸 💗 🌸", x: 50, y: 76, fontSize: 22, color: "#db2777" },
+    ],
+    emoji: "🎀",
+  },
+  // ── Graduation ──
+  {
+    id: "graduation-1",
+    name: "Congratulations Grad",
+    category: "Graduation",
+    background:
+      "linear-gradient(135deg, #1f2937 0%, #111827 50%, #d4af37 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Congratulations!",
+        x: 50,
+        y: 30,
+        fontSize: 36,
+        color: "#fbbf24",
+        bold: true,
+      },
+      { text: "Class of 2026 🎓", x: 50, y: 52, fontSize: 26, color: "#fff" },
+      {
+        text: "The future is yours",
+        x: 50,
+        y: 70,
+        fontSize: 16,
+        color: "#d4af37",
+        italic: true,
+      },
+    ],
+    emoji: "🎓",
+    decorStyle: "luxe",
+  },
+  {
+    id: "graduation-2",
+    name: "Scholar's Pride",
+    category: "Graduation",
+    background:
+      "linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%, #60a5fa 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "We Did It!",
+        x: 50,
+        y: 30,
+        fontSize: 44,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "🎓 Graduating Class of 2026",
+        x: 50,
+        y: 54,
+        fontSize: 17,
+        color: "#bfdbfe",
+      },
+      {
+        text: "Aim for the stars ✨",
+        x: 50,
+        y: 72,
+        fontSize: 16,
+        color: "#93c5fd",
+        italic: true,
+      },
+    ],
+    emoji: "📜",
+  },
+  // ── Business / Professional ──
+  {
+    id: "business-1",
+    name: "Professional Greeting",
+    category: "Business",
+    background:
+      "linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Thank You",
+        x: 50,
+        y: 30,
+        fontSize: 44,
+        color: "#f1f5f9",
+        bold: true,
+      },
+      {
+        text: "for your partnership",
+        x: 50,
+        y: 52,
+        fontSize: 20,
+        color: "#94a3b8",
+        italic: true,
+      },
+      {
+        text: "We value your trust & collaboration",
+        x: 50,
+        y: 70,
+        fontSize: 14,
+        color: "#64748b",
+      },
+    ],
+    emoji: "💼",
+    decorStyle: "minimal",
+  },
+  {
+    id: "business-2",
+    name: "Season's Greetings",
+    category: "Business",
+    background:
+      "linear-gradient(135deg, #134e4a 0%, #0f766e 50%, #2dd4bf 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Season's Greetings",
+        x: 50,
+        y: 33,
+        fontSize: 34,
+        color: "#f0fdfa",
+        bold: true,
+      },
+      {
+        text: "Wishing you a prosperous year ahead",
+        x: 50,
+        y: 55,
+        fontSize: 16,
+        color: "#ccfbf1",
+        italic: true,
+      },
+      {
+        text: "~ With Warm Regards ~",
+        x: 50,
+        y: 74,
+        fontSize: 14,
+        color: "#99f6e4",
+      },
+    ],
+    emoji: "🤝",
+  },
+  {
+    id: "business-3",
+    name: "Company Milestone",
+    category: "Business",
+    background:
+      "linear-gradient(135deg, #2e1065 0%, #4c1d95 50%, #7c3aed 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Celebrating Success",
+        x: 50,
+        y: 30,
+        fontSize: 34,
+        color: "#ede9fe",
+        bold: true,
+      },
+      {
+        text: "🏢 Our Team's Achievement 🏢",
+        x: 50,
+        y: 52,
+        fontSize: 18,
+        color: "#ddd6fe",
+      },
+      {
+        text: "Together we achieve more",
+        x: 50,
+        y: 70,
+        fontSize: 16,
+        color: "#c4b5fd",
+        italic: true,
+      },
+    ],
+    emoji: "🏢",
+  },
+  // ── Get Well Soon ──
+  {
+    id: "getwellsoon-1",
+    name: "Get Well Soon",
+    category: "Get Well Soon",
+    background:
+      "linear-gradient(135deg, #ecfdf5 0%, #d1fae5 50%, #6ee7b7 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Get Well Soon! 🌻",
+        x: 50,
+        y: 35,
+        fontSize: 36,
+        color: "#064e3b",
+        bold: true,
+      },
+      {
+        text: "Sending you healing thoughts",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#065f46",
+        italic: true,
+      },
+      {
+        text: "💚 Speedy recovery 💚",
+        x: 50,
+        y: 76,
+        fontSize: 15,
+        color: "#047857",
+      },
+    ],
+    emoji: "🌻",
+  },
+  // ── Diwali ──
+  {
+    id: "diwali-1",
+    name: "Diwali Dhamaka",
+    category: "Diwali",
+    background:
+      "linear-gradient(135deg, #1a0533 0%, #6b21a8 50%, #f59e0b 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Diwali! ✨",
+        x: 50,
+        y: 32,
+        fontSize: 38,
+        color: "#fde68a",
+        bold: true,
+      },
+      {
+        text: "दीपावली की शुभकामनाएं",
+        x: 50,
+        y: 54,
+        fontSize: 18,
+        color: "#fcd34d",
+      },
+      {
+        text: "May your life shine bright 🪔",
+        x: 50,
+        y: 72,
+        fontSize: 15,
+        color: "#fde68a",
+        italic: true,
+      },
+    ],
+    emoji: "🪔",
+    decorStyle: "sparkle",
+  },
+  {
+    id: "diwali-2",
+    name: "Shubh Deepawali",
+    category: "Diwali",
+    background:
+      "linear-gradient(135deg, #7c2d12 0%, #dc2626 50%, #fbbf24 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Shubh Deepawali 🪔",
+        x: 50,
+        y: 35,
+        fontSize: 36,
+        color: "#fef9c3",
+        bold: true,
+      },
+      {
+        text: "Prosperity & joy to your home",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#fde68a",
+        italic: true,
+      },
+      {
+        text: "✦ Light over darkness ✦",
+        x: 50,
+        y: 75,
+        fontSize: 14,
+        color: "#fcd34d",
+      },
+    ],
+    emoji: "✨",
+  },
+  // ── Eid ──
+  {
+    id: "eid-1",
+    name: "Eid Mubarak",
+    category: "Eid",
+    background:
+      "linear-gradient(135deg, #0c2340 0%, #1a4f8a 50%, #d4af37 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Eid Mubarak ☪️",
+        x: 50,
+        y: 33,
+        fontSize: 38,
+        color: "#fde68a",
+        bold: true,
+      },
+      { text: "عيد مبارك", x: 50, y: 54, fontSize: 24, color: "#d4af37" },
+      {
+        text: "May Allah bless you always",
+        x: 50,
+        y: 74,
+        fontSize: 16,
+        color: "#bfdbfe",
+        italic: true,
+      },
+    ],
+    emoji: "☪️",
+    decorStyle: "geometric",
+  },
+  {
+    id: "eid-2",
+    name: "Eid ul-Fitr",
+    category: "Eid",
+    background:
+      "linear-gradient(135deg, #134e4a 0%, #0f766e 50%, #fde68a 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Eid ul-Fitr Mubarak ☪️",
+        x: 50,
+        y: 35,
+        fontSize: 32,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "May Allah's blessings be with you",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#fde68a",
+        italic: true,
+      },
+      {
+        text: "🌙 Peace & Blessings 🌙",
+        x: 50,
+        y: 76,
+        fontSize: 14,
+        color: "#fef9c3",
+      },
+    ],
+    emoji: "🌙",
+  },
+  // ── Christmas ──
+  {
+    id: "christmas-1",
+    name: "Winter Wishes",
+    category: "Christmas",
+    background:
+      "linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #4a90c4 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Season's Greetings",
+        x: 50,
+        y: 30,
+        fontSize: 34,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "❄️ Wishing you warmth & joy ❄️",
+        x: 50,
+        y: 52,
+        fontSize: 16,
+        color: "#c8e6ff",
+      },
+      {
+        text: "Have a Merry Christmas!",
+        x: 50,
+        y: 70,
+        fontSize: 17,
+        color: "#e8f4ff",
+        italic: true,
+      },
+    ],
+    emoji: "❄️",
+  },
+  {
+    id: "christmas-2",
+    name: "Merry Christmas",
+    category: "Christmas",
+    background: "linear-gradient(135deg, #c41e3a 0%, #228b22 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Merry Christmas!",
+        x: 50,
+        y: 33,
+        fontSize: 38,
+        color: "#ffe066",
+        bold: true,
+      },
+      {
+        text: "🎄 May your days be merry 🎄",
+        x: 50,
+        y: 56,
+        fontSize: 17,
+        color: "#fff8dc",
+      },
+      { text: "Ho Ho Ho! 🎅", x: 50, y: 75, fontSize: 18, color: "#fff" },
+    ],
+    emoji: "🎄",
+  },
+  // ── New Year ──
+  {
+    id: "newyear-1",
+    name: "New Year's Eve",
+    category: "New Year",
+    background:
+      "linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy New Year! 🥂",
+        x: 50,
+        y: 33,
+        fontSize: 38,
+        color: "#fde68a",
+        bold: true,
+      },
+      {
+        text: "2026",
+        x: 50,
+        y: 56,
+        fontSize: 48,
+        color: "rgba(255,255,255,0.15)",
+        bold: true,
+      },
+      {
+        text: "Cheers to a brand new chapter ✨",
+        x: 50,
+        y: 76,
+        fontSize: 15,
+        color: "#e9d5ff",
+        italic: true,
+      },
+    ],
+    emoji: "🥂",
+    decorStyle: "sparkle",
+  },
+  {
+    id: "newyear-2",
+    name: "New Year Wishes",
+    category: "New Year",
+    background:
+      "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Welcome 2026! 🎆",
+        x: 50,
+        y: 35,
+        fontSize: 36,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "New year, new beginnings",
+        x: 50,
+        y: 57,
+        fontSize: 18,
+        color: "#93c5fd",
+        italic: true,
+      },
+      {
+        text: "🌟 Make it count 🌟",
+        x: 50,
+        y: 76,
+        fontSize: 14,
+        color: "#60a5fa",
+      },
+    ],
+    emoji: "🎆",
+  },
+  // ── Holi ──
+  {
+    id: "holi-1",
+    name: "Happy Holi",
+    category: "Holi",
+    background:
+      "linear-gradient(135deg, #f43f5e 0%, #a855f7 33%, #3b82f6 66%, #22c55e 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Holi! 🎨",
+        x: 50,
+        y: 35,
+        fontSize: 40,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "Colors of joy and love",
+        x: 50,
+        y: 57,
+        fontSize: 18,
+        color: "#fef9c3",
+        italic: true,
+      },
+      {
+        text: "🌈 Rang Birangi Khushiyan 🌈",
+        x: 50,
+        y: 76,
+        fontSize: 13,
+        color: "#fff",
+      },
+    ],
+    emoji: "🎨",
+  },
+  {
+    id: "holi-2",
+    name: "Rang Barse",
+    category: "Holi",
+    background:
+      "linear-gradient(135deg, #ec4899 0%, #f97316 50%, #facc15 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Rang Barse 🌈",
+        x: 50,
+        y: 35,
+        fontSize: 40,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "Splash into happiness",
+        x: 50,
+        y: 57,
+        fontSize: 18,
+        color: "#fef9c3",
+        italic: true,
+      },
+      {
+        text: "💫 Play of colours 💫",
+        x: 50,
+        y: 76,
+        fontSize: 14,
+        color: "#fff",
+      },
+    ],
+    emoji: "🌈",
+  },
+  // ── Navratri ──
+  {
+    id: "navratri-1",
+    name: "Happy Navratri",
+    category: "Navratri",
+    background:
+      "linear-gradient(135deg, #831843 0%, #ec4899 50%, #fbbf24 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Navratri 🪷",
+        x: 50,
+        y: 35,
+        fontSize: 36,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "Nine nights of devotion & dance",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#fde68a",
+        italic: true,
+      },
+      { text: "✦ Jai Mata Di ✦", x: 50, y: 76, fontSize: 15, color: "#fce7f3" },
+    ],
+    emoji: "🪷",
+  },
+  // ── Halloween ──
+  {
+    id: "halloween-1",
+    name: "Happy Halloween",
+    category: "Halloween",
+    background:
+      "linear-gradient(135deg, #1c1917 0%, #292524 50%, #ea580c 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Halloween! 🎃",
+        x: 50,
+        y: 35,
+        fontSize: 34,
+        color: "#fed7aa",
+        bold: true,
+      },
+      {
+        text: "Tricks and treats await",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#fdba74",
+        italic: true,
+      },
+      { text: "👻 BOO! 🦇", x: 50, y: 76, fontSize: 20, color: "#f97316" },
+    ],
+    emoji: "🎃",
+  },
+  // ── Mother's Day ──
+  {
+    id: "mothers-day-1",
+    name: "Happy Mother's Day",
+    category: "Mother's Day",
+    background:
+      "linear-gradient(135deg, #fdf2f8 0%, #fce7f3 50%, #e879f9 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Mother's Day 💐",
+        x: 50,
+        y: 33,
+        fontSize: 30,
+        color: "#701a75",
+        bold: true,
+      },
+      {
+        text: "Thank you for everything, Mom",
+        x: 50,
+        y: 55,
+        fontSize: 18,
+        color: "#86198f",
+        italic: true,
+      },
+      {
+        text: "🌸 You're our world 🌸",
+        x: 50,
+        y: 75,
+        fontSize: 15,
+        color: "#a21caf",
+      },
+    ],
+    emoji: "💐",
+  },
+  // ── Father's Day ──
+  {
+    id: "fathers-day-1",
+    name: "Happy Father's Day",
+    category: "Father's Day",
+    background:
+      "linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%, #60a5fa 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Father's Day 👔",
+        x: 50,
+        y: 33,
+        fontSize: 30,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "The best dad in the world",
+        x: 50,
+        y: 55,
+        fontSize: 18,
+        color: "#bfdbfe",
+        italic: true,
+      },
+      {
+        text: "🏅 Our hero, always 🏅",
+        x: 50,
+        y: 76,
+        fontSize: 15,
+        color: "#93c5fd",
+      },
+    ],
+    emoji: "👔",
+  },
+  // ── Raksha Bandhan ──
+  {
+    id: "rakhi-1",
+    name: "Happy Rakhi",
+    category: "Raksha Bandhan",
+    background:
+      "linear-gradient(135deg, #fdf2f8 0%, #fce7f3 50%, #fbcfe8 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Raksha Bandhan 🪢",
+        x: 50,
+        y: 35,
+        fontSize: 28,
+        color: "#9d174d",
+        bold: true,
+      },
+      {
+        text: "Celebrating the bond of love",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#be185d",
+        italic: true,
+      },
+      {
+        text: "💗 Always there for you 💗",
+        x: 50,
+        y: 76,
+        fontSize: 14,
+        color: "#db2777",
+      },
+    ],
+    emoji: "🪢",
+  },
+  // ── Ganesh Chaturthi ──
+  {
+    id: "ganesh-1",
+    name: "Ganpati Bappa",
+    category: "Ganesh Chaturthi",
+    background:
+      "linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #f59e0b 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Ganpati Bappa Morya! 🐘",
+        x: 50,
+        y: 35,
+        fontSize: 28,
+        color: "#78350f",
+        bold: true,
+      },
+      {
+        text: "May Lord Ganesha bless you",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#92400e",
+        italic: true,
+      },
+      { text: "✦ Shubh Labh ✦", x: 50, y: 76, fontSize: 15, color: "#78350f" },
+    ],
+    emoji: "🐘",
+  },
+  // ── Onam ──
+  {
+    id: "onam-1",
+    name: "Happy Onam",
+    category: "Onam",
+    background:
+      "linear-gradient(135deg, #065f46 0%, #059669 50%, #fbbf24 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Onam 🌸",
+        x: 50,
+        y: 35,
+        fontSize: 36,
+        color: "#fef9c3",
+        bold: true,
+      },
+      {
+        text: "Prosperity and harvest blessings",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#fde68a",
+        italic: true,
+      },
+      {
+        text: "🌺 Thrikkakara Appan bless you 🌺",
+        x: 50,
+        y: 76,
+        fontSize: 13,
+        color: "#fef9c3",
+      },
+    ],
+    emoji: "🌸",
+  },
+  // ── Baisakhi ──
+  {
+    id: "baisakhi-1",
+    name: "Happy Baisakhi",
+    category: "Baisakhi",
+    background:
+      "linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #fbbf24 100%)",
+    backgroundType: "gradient",
+    previewElements: [
+      {
+        text: "Happy Baisakhi! 🌾",
+        x: 50,
+        y: 35,
+        fontSize: 36,
+        color: "#fff",
+        bold: true,
+      },
+      {
+        text: "Harvest blessings and joy",
+        x: 50,
+        y: 57,
+        fontSize: 17,
+        color: "#fde68a",
+        italic: true,
+      },
+      {
+        text: "🥁 Bhangra & Giddha 🥁",
+        x: 50,
+        y: 76,
+        fontSize: 14,
+        color: "#fef9c3",
+      },
+    ],
+    emoji: "🌾",
+  },
+  // ── Blank ──
+  {
+    id: "blank-1",
+    name: "Blank Canvas",
+    category: "Blank",
+    background: "#ffffff",
+    backgroundType: "solid",
+    previewElements: [
+      {
+        text: "Your Message Here",
+        x: 50,
+        y: 48,
+        fontSize: 28,
+        color: "#aaa",
+        italic: true,
+      },
+    ],
+    emoji: "✨",
+  },
+];
+
+const BACKGROUND_COLORS = [
+  "#ffffff",
+  "#fff5f5",
+  "#fff0e6",
+  "#fffff0",
+  "#f0fff4",
+  "#e6f7ff",
+  "#f3e8ff",
+  "#fce7f3",
+  "#ecfdf5",
+  "#1a1a2e",
+  "#16213e",
+  "#0f3460",
+];
+
+const BACKGROUND_GRADIENTS = [
+  {
+    id: "pink-rose",
+    value: "linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)",
+  },
+  {
+    id: "purple-pink",
+    value: "linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)",
+  },
+  {
+    id: "orange-gold",
+    value: "linear-gradient(135deg, #fda085 0%, #f6d365 100%)",
+  },
+  {
+    id: "green-blue",
+    value: "linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)",
+  },
+  {
+    id: "blue-sky",
+    value: "linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)",
+  },
+  {
+    id: "lime-green",
+    value: "linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%)",
+  },
+  {
+    id: "magenta-red",
+    value: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+  },
+  {
+    id: "blue-cyan",
+    value: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+  },
+  {
+    id: "teal-mint",
+    value: "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)",
+  },
+  {
+    id: "pink-yellow",
+    value: "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
+  },
+  {
+    id: "navy-blue",
+    value: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
+  },
+  {
+    id: "red-green",
+    value: "linear-gradient(135deg, #c41e3a 0%, #228b22 100%)",
+  },
+];
+
+const CARD_PATTERNS: {
+  id: string;
+  label: string;
+  emoji: string;
+  css: (c: string) => string;
+}[] = [
+  {
+    id: "dots",
+    label: "Dots",
+    emoji: "⚬",
+    css: (c) =>
+      `radial-gradient(circle, ${c} 15%, transparent 16%), radial-gradient(circle, ${c} 15%, transparent 16%)`,
+  },
+  {
+    id: "stripes",
+    label: "Stripes",
+    emoji: "╱",
+    css: (c) =>
+      `repeating-linear-gradient(45deg, ${c} 0px, ${c} 4px, transparent 4px, transparent 20px)`,
+  },
+  {
+    id: "grid",
+    label: "Grid",
+    emoji: "⊞",
+    css: (c) =>
+      `repeating-linear-gradient(0deg, ${c} 0, ${c} 1px, transparent 1px, transparent 24px), repeating-linear-gradient(90deg, ${c} 0, ${c} 1px, transparent 1px, transparent 24px)`,
+  },
+  {
+    id: "zigzag",
+    label: "Zigzag",
+    emoji: "⌇",
+    css: (c) =>
+      `linear-gradient(135deg, ${c} 25%, transparent 25%) -20px 0, linear-gradient(225deg, ${c} 25%, transparent 25%) -20px 0, linear-gradient(315deg, ${c} 25%, transparent 25%), linear-gradient(45deg, ${c} 25%, transparent 25%)`,
+  },
+  {
+    id: "diamonds",
+    label: "Diamonds",
+    emoji: "◇",
+    css: (c) =>
+      `repeating-linear-gradient(45deg, ${c} 0, ${c} 2px, transparent 2px, transparent 14px), repeating-linear-gradient(-45deg, ${c} 0, ${c} 2px, transparent 2px, transparent 14px)`,
+  },
+  {
+    id: "stars",
+    label: "Stars",
+    emoji: "✦",
+    css: (c) =>
+      `radial-gradient(circle at 50% 50%, ${c} 2px, transparent 3px), radial-gradient(circle at 0% 50%, ${c} 1px, transparent 2px), radial-gradient(circle at 100% 50%, ${c} 1px, transparent 2px)`,
+  },
+  {
+    id: "confetti",
+    label: "Confetti",
+    emoji: "🎊",
+    css: (c) =>
+      `repeating-linear-gradient(60deg, ${c} 0, ${c} 2px, transparent 2px, transparent 18px), repeating-linear-gradient(-60deg, ${c} 0, ${c} 2px, transparent 2px, transparent 18px), repeating-linear-gradient(0deg, ${c} 0, ${c} 2px, transparent 2px, transparent 18px)`,
+  },
+  {
+    id: "marble",
+    label: "Marble",
+    emoji: "◎",
+    css: (c) =>
+      `repeating-radial-gradient(circle at 20% 30%, transparent 0, transparent 18px, ${c} 19px, transparent 20px), repeating-linear-gradient(135deg, ${c}22, transparent 40px)`,
+  },
+];
+
+const GRAPHICS = [
+  { category: "Celebrations", emoji: "🎉" },
+  { category: "Celebrations", emoji: "🎊" },
+  { category: "Celebrations", emoji: "🎈" },
+  { category: "Celebrations", emoji: "🥳" },
+  { category: "Celebrations", emoji: "🎁" },
+  { category: "Celebrations", emoji: "🏆" },
+  { category: "Celebrations", emoji: "🎖️" },
+  { category: "Celebrations", emoji: "🥂" },
+  { category: "Nature", emoji: "🌸" },
+  { category: "Nature", emoji: "🌺" },
+  { category: "Nature", emoji: "🌻" },
+  { category: "Nature", emoji: "🍀" },
+  { category: "Nature", emoji: "🌈" },
+  { category: "Nature", emoji: "⭐" },
+  { category: "Nature", emoji: "🌙" },
+  { category: "Nature", emoji: "☀️" },
+  { category: "Love", emoji: "❤️" },
+  { category: "Love", emoji: "💕" },
+  { category: "Love", emoji: "💖" },
+  { category: "Love", emoji: "💝" },
+  { category: "Love", emoji: "🌹" },
+  { category: "Love", emoji: "💌" },
+  { category: "Love", emoji: "💏" },
+  { category: "Love", emoji: "👫" },
+  { category: "Food", emoji: "🎂" },
+  { category: "Food", emoji: "🍰" },
+  { category: "Food", emoji: "🧁" },
+  { category: "Food", emoji: "🍭" },
+  { category: "Food", emoji: "🍬" },
+  { category: "Food", emoji: "🍫" },
+  { category: "Food", emoji: "🍩" },
+  { category: "Food", emoji: "🍪" },
+  { category: "Animals", emoji: "🦋" },
+  { category: "Animals", emoji: "🐝" },
+  { category: "Animals", emoji: "🦄" },
+  { category: "Animals", emoji: "🐬" },
+  { category: "Animals", emoji: "🦚" },
+  { category: "Animals", emoji: "🦜" },
+  { category: "Animals", emoji: "🐼" },
+  { category: "Animals", emoji: "🦁" },
+  { category: "Fun", emoji: "🎨" },
+  { category: "Fun", emoji: "🎭" },
+  { category: "Fun", emoji: "🎪" },
+  { category: "Fun", emoji: "🎠" },
+  { category: "Fun", emoji: "🌟" },
+  { category: "Fun", emoji: "✨" },
+  { category: "Fun", emoji: "💫" },
+  { category: "Fun", emoji: "🔥" },
+];
+
+const GRAPHICS_CATEGORIES = [
+  "Celebrations",
+  "Nature",
+  "Love",
+  "Food",
+  "Animals",
+  "Fun",
+];
+
+const PATTERN_BG_SIZES: Record<string, string> = {
+  dots: "30px 30px, 30px 30px",
+  stripes: "20px 20px",
+  grid: "24px 24px, 24px 24px",
+  zigzag: "40px 40px, 40px 40px, 40px 40px, 40px 40px",
+  diamonds: "20px 20px, 20px 20px",
+  stars: "30px 30px, 30px 30px, 30px 30px",
+  confetti: "18px 18px, 18px 18px, 18px 18px",
+  marble: "100px 100px, 200px 200px",
+};
+
+const PATTERN_BG_POSITIONS: Record<string, string> = {
+  dots: "0 0, 15px 15px",
+  stripes: "0 0",
+  grid: "0 0, 0 0",
+  zigzag: "-20px 0, -20px 0, 0 0, 0 0",
+  diamonds: "0 0, 10px 10px",
+  stars: "0 0, 15px 0, -15px 0",
+  confetti: "0 0, 0 0, 0 0",
+  marble: "0 0, 0 0",
+};
+
+const TEXT_FONTS = [
+  "sans-serif",
+  "serif",
+  "cursive",
+  "Georgia, serif",
+  "Palatino, serif",
+];
+const FONT_LABELS = [
+  "Modern",
+  "Classic Serif",
+  "Handwritten",
+  "Georgia",
+  "Palatino",
+];
+const TEXT_COLORS = [
+  "#1a1a1a",
+  "#ffffff",
+  "#c41e3a",
+  "#276b3b",
+  "#1e3c72",
+  "#7c2d6b",
+  "#8b6b4e",
+  "#f7971e",
+  "#9b1c2e",
+  "#4a90c4",
+  "#d4a017",
+  "#6b4c9b",
+];
+
+// ─── Helper ────────────────────────────────────────────────────────────────────
+let idCounter = 0;
+function genId() {
+  return `el-${Date.now()}-${idCounter++}`;
+}
+
+function ShapeSVG({
+  shapeType,
+  fillColor,
+  width,
+  height,
+}: { shapeType: string; fillColor: string; width: number; height: number }) {
+  const def = SHAPE_DEFS.find((s) => s.id === shapeType);
+  if (!def) return null;
+
+  if (def.primitive === "circle") {
+    return (
+      <svg
+        role="img"
+        aria-label="shape"
+        width={width}
+        height={height}
+        viewBox="0 0 100 100"
+        style={{ overflow: "visible" }}
+      >
+        <circle cx="50" cy="50" r="48" fill={fillColor} />
+      </svg>
+    );
+  }
+  if (def.primitive === "rect") {
+    return (
+      <svg
+        role="img"
+        aria-label="shape"
+        width={width}
+        height={height}
+        viewBox="0 0 100 100"
+        style={{ overflow: "visible" }}
+      >
+        <rect x="2" y="2" width="96" height="96" rx="4" fill={fillColor} />
+      </svg>
+    );
+  }
+  if (def.primitive === "rect-wide") {
+    return (
+      <svg
+        role="img"
+        aria-label="shape"
+        width={width}
+        height={height}
+        viewBox="0 0 200 100"
+        style={{ overflow: "visible" }}
+      >
+        <rect x="2" y="2" width="196" height="96" rx="4" fill={fillColor} />
+      </svg>
+    );
+  }
+  if (def.path) {
+    return (
+      <svg
+        role="img"
+        aria-label="shape"
+        width={width}
+        height={height}
+        viewBox="0 0 100 100"
+        style={{ overflow: "visible" }}
+      >
+        <path d={def.path} fill={fillColor} />
+      </svg>
+    );
+  }
+  return null;
+}
+
+// ─── Card Preview Element ──────────────────────────────────────────────────────
+
+function CardPreviewElement({
+  el,
+  selected,
+  onSelect,
+  onDrag,
+}: {
+  el: CardElement;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  onDrag: (id: string, dx: number, dy: number) => void;
+}) {
+  const dragStart = useRef<{ mx: number; my: number } | null>(null);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSelect(el.id);
+    dragStart.current = { mx: e.clientX, my: e.clientY };
+    const handleMove = (ev: MouseEvent) => {
+      if (!dragStart.current) return;
+      const dx = ((ev.clientX - dragStart.current.mx) / 560) * 100;
+      const dy = ((ev.clientY - dragStart.current.my) / 392) * 100;
+      onDrag(el.id, dx, dy);
+      dragStart.current = { mx: ev.clientX, my: ev.clientY };
+    };
+    const handleUp = () => {
+      dragStart.current = null;
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+  };
+
+  if (el.type === "shape") {
+    const w = (el.width / 100) * 560;
+    const h = (el.height / 100) * 392;
+    return (
+      <div
+        data-ocid="card.canvas_target"
+        onMouseDown={handleMouseDown}
+        style={{
+          position: "absolute",
+          left: `${el.x}%`,
+          top: `${el.y}%`,
+          transform: `translate(-50%, -50%) rotate(${el.rotation}deg)`,
+          cursor: "move",
+          userSelect: "none",
+          outline: selected ? "2px dashed rgba(139,92,246,0.7)" : "none",
+          outlineOffset: "4px",
+        }}
+      >
+        <ShapeSVG
+          shapeType={el.shapeType}
+          fillColor={el.fillColor}
+          width={w}
+          height={h}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-ocid="card.canvas_target"
+      onMouseDown={handleMouseDown}
+      style={{
+        position: "absolute",
+        left: `${el.x}%`,
+        top: `${el.y}%`,
+        transform: "translate(-50%, -50%)",
+        cursor: "move",
+        userSelect: "none",
+        outline: selected ? "2px dashed rgba(139,92,246,0.7)" : "none",
+        outlineOffset: "4px",
+        borderRadius: 4,
+        fontSize: el.fontSize,
+        color: el.color,
+        fontFamily: el.fontFamily,
+        fontWeight: el.bold ? "bold" : "normal",
+        fontStyle: el.italic ? "italic" : "normal",
+        padding: "2px 4px",
+        whiteSpace: "nowrap",
+        maxWidth: "90%",
+        textShadow: "0 1px 3px rgba(0,0,0,0.15)",
+      }}
+    >
+      {el.content}
+    </div>
+  );
+}
+
+// ─── Template Preview Card ─────────────────────────────────────────────────────
+
+function TemplateCard({
+  template,
+  onClick,
+}: { template: Template; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      data-ocid="gallery.item.1"
+      className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl border border-border/30 text-left w-full"
+      onClick={onClick}
+    >
+      {/* Card Preview */}
+      <div
+        className="relative w-full"
+        style={{ paddingBottom: "70%", background: template.background }}
+      >
+        {/* Decorative corner ornaments for luxe/floral styles */}
+        {template.decorStyle === "luxe" && (
+          <>
+            <svg
+              aria-hidden="true"
+              className="absolute top-1 left-1 w-8 h-8 opacity-40"
+              viewBox="0 0 40 40"
+            >
+              <path
+                d="M 2 2 L 15 2 M 2 2 L 2 15"
+                stroke="#d4af37"
+                strokeWidth="2"
+                fill="none"
+              />
+              <circle cx="2" cy="2" r="2" fill="#d4af37" />
+            </svg>
+            <svg
+              aria-hidden="true"
+              className="absolute top-1 right-1 w-8 h-8 opacity-40"
+              viewBox="0 0 40 40"
+            >
+              <path
+                d="M 38 2 L 25 2 M 38 2 L 38 15"
+                stroke="#d4af37"
+                strokeWidth="2"
+                fill="none"
+              />
+              <circle cx="38" cy="2" r="2" fill="#d4af37" />
+            </svg>
+            <svg
+              aria-hidden="true"
+              className="absolute bottom-1 left-1 w-8 h-8 opacity-40"
+              viewBox="0 0 40 40"
+            >
+              <path
+                d="M 2 38 L 15 38 M 2 38 L 2 25"
+                stroke="#d4af37"
+                strokeWidth="2"
+                fill="none"
+              />
+              <circle cx="2" cy="38" r="2" fill="#d4af37" />
+            </svg>
+            <svg
+              aria-hidden="true"
+              className="absolute bottom-1 right-1 w-8 h-8 opacity-40"
+              viewBox="0 0 40 40"
+            >
+              <path
+                d="M 38 38 L 25 38 M 38 38 L 38 25"
+                stroke="#d4af37"
+                strokeWidth="2"
+                fill="none"
+              />
+              <circle cx="38" cy="38" r="2" fill="#d4af37" />
+            </svg>
+          </>
+        )}
+        {template.decorStyle === "floral" && (
+          <>
+            <svg
+              aria-hidden="true"
+              className="absolute top-0 left-0 w-16 h-16 opacity-20"
+              viewBox="0 0 60 60"
+            >
+              <path
+                d="M10 30 Q15 10 30 10 Q15 10 30 30 Q15 50 10 30"
+                fill="#c9a882"
+              />
+              <path
+                d="M50 30 Q45 10 30 10 Q45 10 30 30 Q45 50 50 30"
+                fill="#c9a882"
+              />
+            </svg>
+            <svg
+              aria-hidden="true"
+              className="absolute bottom-0 right-0 w-16 h-16 opacity-20"
+              viewBox="0 0 60 60"
+            >
+              <path
+                d="M10 30 Q15 10 30 10 Q15 10 30 30 Q15 50 10 30"
+                fill="#c9a882"
+              />
+              <path
+                d="M50 30 Q45 10 30 10 Q45 10 30 30 Q45 50 50 30"
+                fill="#c9a882"
+              />
+            </svg>
+          </>
+        )}
+        {template.decorStyle === "sparkle" && (
+          <>
+            <span className="absolute top-2 left-2 text-lg opacity-60">✦</span>
+            <span className="absolute top-2 right-2 text-lg opacity-60">✦</span>
+            <span className="absolute bottom-2 left-2 text-lg opacity-60">
+              ✦
+            </span>
+            <span className="absolute bottom-2 right-2 text-lg opacity-60">
+              ✦
+            </span>
+          </>
+        )}
+        {/* Text previews */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-3">
+          {template.previewElements.map((el, i) => (
+            <div
+              key={`${el.text}-${i}`}
+              style={{
+                fontSize: Math.round(el.fontSize * 0.38),
+                color: el.color,
+                fontWeight: el.bold ? "bold" : "normal",
+                fontStyle: el.italic ? "italic" : "normal",
+                textAlign: "center",
+                lineHeight: 1.3,
+                marginBottom: 2,
+                textShadow: "0 1px 3px rgba(0,0,0,0.18)",
+                maxWidth: "92%",
+              }}
+            >
+              {el.text}
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Label */}
+      <div className="p-3 bg-card border-t border-border/20">
+        <div className="flex items-center gap-2">
+          <span className="text-lg leading-none">{template.emoji}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground truncate">
+              {template.name}
+            </p>
+            <p className="text-xs text-muted-foreground">{template.category}</p>
+          </div>
+        </div>
+      </div>
+      {/* Hover Overlay */}
+      <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+        <span className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1.5 rounded-full shadow-lg">
+          Use Template
+        </span>
+      </div>
+    </button>
+  );
+}
+
+// ─── Main App ──────────────────────────────────────────────────────────────────
+
+export default function App() {
+  const [view, setView] = useState<"gallery" | "editor">("gallery");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [card, setCard] = useState<Card | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("text");
+  const [graphicsCategory, setGraphicsCategory] = useState("Celebrations");
+
+  // Text controls
+  const [newText, setNewText] = useState("Your message here");
+  const [textFontSize, setTextFontSize] = useState(24);
+  const [textColor, setTextColor] = useState("#1a1a1a");
+  const [textFontFamily, setTextFontFamily] = useState("sans-serif");
+  const [textBold, setTextBold] = useState(false);
+  const [textItalic, setTextItalic] = useState(false);
+
+  // Shape controls
+  const [shapeType, setShapeType] = useState("star");
+  const [shapeColor, setShapeColor] = useState("#f59e0b");
+  const [shapeSize, setShapeSize] = useState(15);
+
+  const categories = [
+    "All",
+    ...Array.from(new Set(TEMPLATES.map((t) => t.category))),
+  ];
+
+  const filteredTemplates = TEMPLATES.filter((t) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      t.name.toLowerCase().includes(q) ||
+      t.category.toLowerCase().includes(q) ||
+      t.previewElements.some((el) => el.text.toLowerCase().includes(q));
+    const matchesCat =
+      selectedCategory === "All" || t.category === selectedCategory;
+    return matchesSearch && matchesCat;
+  });
+
+  const openEditor = (template: Template) => {
+    setCard({
+      id: genId(),
+      templateId: template.id,
+      background: template.background,
+      backgroundType: template.backgroundType,
+      patternStyle: template.patternStyle,
+      patternColor: undefined,
+      elements: template.previewElements.map((el) => ({
+        id: genId(),
+        type: "text",
+        content: el.text,
+        x: el.x,
+        y: el.y,
+        fontSize: el.fontSize,
+        color: el.color,
+        fontFamily: "sans-serif",
+        bold: el.bold ?? false,
+        italic: el.italic ?? false,
+      })),
+    });
+    setSelectedId(null);
+    setView("editor");
+  };
+
+  const addText = () => {
+    if (!newText.trim()) return;
+    setCard((prev) =>
+      prev
+        ? {
+            ...prev,
+            elements: [
+              ...prev.elements,
+              {
+                id: genId(),
+                type: "text",
+                content: newText,
+                x: 50,
+                y: 50,
+                fontSize: textFontSize,
+                color: textColor,
+                fontFamily: textFontFamily,
+                bold: textBold,
+                italic: textItalic,
+              },
+            ],
+          }
+        : prev,
+    );
+    toast.success("Text added!");
+  };
+
+  const addShape = () => {
+    setCard((prev) =>
+      prev
+        ? {
+            ...prev,
+            elements: [
+              ...prev.elements,
+              {
+                id: genId(),
+                type: "shape",
+                shapeType,
+                x: 50,
+                y: 50,
+                width: shapeSize,
+                height: shapeSize,
+                fillColor: shapeColor,
+                rotation: 0,
+              } as ShapeElement,
+            ],
+          }
+        : prev,
+    );
+    toast.success("Shape added!");
+  };
+
+  const updateElement = useCallback(
+    (id: string, updates: Partial<CardElement>) => {
+      setCard((prev) =>
+        prev
+          ? {
+              ...prev,
+              elements: prev.elements.map((el) =>
+                el.id === id ? ({ ...el, ...updates } as CardElement) : el,
+              ),
+            }
+          : prev,
+      );
+    },
+    [],
+  );
+
+  const selectedEl = card?.elements.find((e) => e.id === selectedId) ?? null;
+  const selectedTextEl = selectedEl?.type === "text" ? selectedEl : null;
+  const selectedShapeEl = selectedEl?.type === "shape" ? selectedEl : null;
+
+  const deleteSelected = () => {
+    if (!selectedId) return;
+    setCard((prev) =>
+      prev
+        ? {
+            ...prev,
+            elements: prev.elements.filter((e) => e.id !== selectedId),
+          }
+        : prev,
+    );
+    setSelectedId(null);
+  };
+
+  const handleDrag = useCallback((id: string, dx: number, dy: number) => {
+    setCard((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        elements: prev.elements.map((el) =>
+          el.id === id
+            ? {
+                ...el,
+                x: Math.max(5, Math.min(95, el.x + dx)),
+                y: Math.max(5, Math.min(95, el.y + dy)),
+              }
+            : el,
+        ),
+      };
+    });
+  }, []);
+
+  const downloadCard = useCallback(() => {
+    if (!card) return;
+    const W = 800;
+    const H = 560;
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Background
+    if (card.backgroundType === "gradient") {
+      const match = card.background.match(/linear-gradient\(([^,]+),(.+)\)/);
+      if (match) {
+        const stops = match[2].split(",").map((s) => s.trim());
+        const angle = Number.parseFloat(match[1].replace("deg", "")) || 135;
+        const rad = (angle - 90) * (Math.PI / 180);
+        const cx = W / 2;
+        const cy = H / 2;
+        const len = Math.sqrt(W * W + H * H);
+        const x0 = cx - (Math.cos(rad) * len) / 2;
+        const y0 = cy - (Math.sin(rad) * len) / 2;
+        const x1 = cx + (Math.cos(rad) * len) / 2;
+        const y1 = cy + (Math.sin(rad) * len) / 2;
+        const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+        for (const [i, stop] of stops.entries()) {
+          const pctMatch = stop.match(/([\d.]+)%/);
+          const colorMatch = stop.match(/(#[a-fA-F0-9]{3,8}|rgba?\([^)]+\))/);
+          if (colorMatch) {
+            const pos = pctMatch
+              ? Number.parseFloat(pctMatch[1]) / 100
+              : i / (stops.length - 1);
+            grad.addColorStop(pos, colorMatch[1]);
+          }
+        }
+        ctx.fillStyle = grad;
+      } else {
+        ctx.fillStyle = "#ffffff";
+      }
+    } else {
+      ctx.fillStyle = card.background || "#ffffff";
+    }
+    ctx.fillRect(0, 0, W, H);
+
+    // Elements
+    for (const el of card.elements) {
+      if (el.type === "text") {
+        const fw = el.bold ? "bold" : "normal";
+        const fs = el.italic ? "italic" : "normal";
+        ctx.font = `${fs} ${fw} ${el.fontSize * 1.4}px ${el.fontFamily}`;
+        ctx.fillStyle = el.color;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.shadowColor = "rgba(0,0,0,0.15)";
+        ctx.shadowBlur = 4;
+        ctx.fillText(el.content, (el.x / 100) * W, (el.y / 100) * H);
+        ctx.shadowBlur = 0;
+      } else if (el.type === "shape") {
+        const cx = (el.x / 100) * W;
+        const cy = (el.y / 100) * H;
+        const sw = (el.width / 100) * W;
+        const sh = (el.height / 100) * H;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate((el.rotation * Math.PI) / 180);
+        ctx.fillStyle = el.fillColor;
+        const def = SHAPE_DEFS.find((s) => s.id === el.shapeType);
+        if (def?.primitive === "circle") {
+          ctx.beginPath();
+          ctx.arc(0, 0, sw / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (
+          def?.primitive === "rect" ||
+          def?.primitive === "rect-wide"
+        ) {
+          ctx.fillRect(-sw / 2, -sh / 2, sw, sh);
+        } else if (def?.path) {
+          // Scale SVG path from 100x100 viewBox to actual size
+          ctx.scale(sw / 100, sh / 100);
+          ctx.translate(-50, -50);
+          const p = new Path2D(def.path);
+          ctx.fill(p);
+        }
+        ctx.restore();
+      }
+    }
+
+    const link = document.createElement("a");
+    link.download = "cardcraft-card.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    toast.success("Card downloaded!");
+  }, [card]);
+
+  // ── Gallery View ──────────────────────────────────────────────────────────────
+  if (view === "gallery") {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <header className="sticky top-0 z-20 bg-background/90 backdrop-blur-sm border-b border-border">
+          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{
+                  background:
+                    "linear-gradient(135deg, oklch(0.62 0.22 285), oklch(0.55 0.22 300))",
+                }}
+              >
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-heading text-2xl font-bold tracking-tight text-foreground">
+                CardCraft
+              </span>
+              <span className="text-muted-foreground text-sm hidden sm:block font-medium">
+                — Card Studio
+              </span>
+            </div>
+            <Button
+              data-ocid="gallery.open_modal_button"
+              variant="outline"
+              size="sm"
+              onClick={() => openEditor(TEMPLATES[TEMPLATES.length - 1])}
+              className="gap-2 border-border text-foreground hover:bg-secondary hover:text-foreground"
+            >
+              <Plus className="w-4 h-4" /> Blank Card
+            </Button>
+          </div>
+        </header>
+
+        <main className="flex-1 max-w-6xl mx-auto px-6 py-12 w-full">
+          {/* Hero */}
+          <section className="relative text-center mb-16 py-16 rounded-2xl overflow-hidden hero-gradient animate-fade-in">
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-sm px-3 py-1 text-xs font-semibold tracking-widest uppercase text-primary mb-6">
+                <Sparkles className="w-3 h-3" /> Card Studio
+              </div>
+              <h1 className="font-heading text-5xl md:text-6xl font-bold text-foreground mb-5 leading-[1.1] tracking-tight">
+                Design Cards
+                <br />
+                <span
+                  style={{
+                    background:
+                      "linear-gradient(90deg, oklch(0.72 0.22 285), oklch(0.78 0.18 200))",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  Worth Sending
+                </span>
+              </h1>
+              <p className="text-muted-foreground text-lg max-w-lg mx-auto leading-relaxed">
+                Pick a template, personalize with your own text & shapes, and
+                download your card in seconds.
+              </p>
+            </div>
+          </section>
+
+          {/* Search + Category Filter */}
+          <div className="mb-10 space-y-4">
+            <div className="relative max-w-md mx-auto">
+              <Search
+                className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors ${
+                  searchQuery ? "text-violet-500" : "text-muted-foreground"
+                }`}
+              />
+              <input
+                data-ocid="gallery.search_input"
+                type="text"
+                placeholder="Search templates or festivals…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-background/60 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all ${
+                  searchQuery
+                    ? "text-violet-500 font-medium"
+                    : "text-foreground"
+                }`}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2 justify-center">
+              {categories.map((cat) => (
+                <button
+                  type="button"
+                  key={cat}
+                  data-ocid="gallery.tab"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-4 py-1.5 rounded-sm text-sm font-medium tracking-wide transition-all border ${
+                    selectedCategory === cat
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-transparent text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Template Grid */}
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5"
+            data-ocid="gallery.list"
+          >
+            {filteredTemplates.length === 0 ? (
+              <div
+                className="col-span-full text-center py-20"
+                data-ocid="gallery.empty_state"
+              >
+                <p className="text-muted-foreground text-lg">
+                  No templates found for "{searchQuery}"
+                </p>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Try searching for Birthday, Diwali, Wedding…
+                </p>
+              </div>
+            ) : (
+              filteredTemplates.map((t) => (
+                <TemplateCard
+                  key={t.id}
+                  template={t}
+                  onClick={() => openEditor(t)}
+                />
+              ))
+            )}
+          </div>
+        </main>
+
+        <footer className="border-t border-border mt-16 py-6 text-center text-muted-foreground text-sm">
+          © {new Date().getFullYear()}. Built with ❤️ using{" "}
+          <a
+            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            caffeine.ai
+          </a>
+        </footer>
+        <Toaster />
+      </div>
+    );
+  }
+
+  // ── Editor View ───────────────────────────────────────────────────────────────
+  if (!card) return null;
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <header className="sticky top-0 z-20 bg-background/90 backdrop-blur-sm border-b border-border">
+        <div className="px-5 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Button
+              data-ocid="editor.back_button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setView("gallery")}
+              className="gap-2 text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="w-4 h-4" /> Templates
+            </Button>
+            <div className="h-5 w-px bg-border" />
+            <div className="flex items-center gap-2">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{
+                  background:
+                    "linear-gradient(135deg, oklch(0.62 0.22 285), oklch(0.55 0.22 300))",
+                }}
+              >
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <span className="font-heading text-lg font-bold text-foreground hidden sm:block">
+                CardCraft
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedId && (
+              <Button
+                data-ocid="editor.delete_button"
+                variant="ghost"
+                size="sm"
+                onClick={deleteSelected}
+                className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Delete</span>
+              </Button>
+            )}
+            <Button
+              data-ocid="editor.download_button"
+              size="sm"
+              onClick={downloadCard}
+              className="gap-2 font-semibold"
+              style={{
+                background:
+                  "linear-gradient(135deg, oklch(0.62 0.22 285), oklch(0.55 0.22 300))",
+                color: "white",
+                border: "none",
+              }}
+            >
+              <Download className="w-4 h-4" /> Download
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <aside className="w-72 border-r border-border bg-sidebar flex flex-col overflow-hidden">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="flex flex-col flex-1 min-h-0"
+          >
+            <TabsList className="grid grid-cols-4 m-3 mb-0 bg-background/50">
+              <TabsTrigger
+                value="text"
+                data-ocid="editor.text.tab"
+                className="gap-1 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <Type className="w-3.5 h-3.5" /> Text
+              </TabsTrigger>
+              <TabsTrigger
+                value="shapes"
+                data-ocid="editor.shapes.tab"
+                className="gap-1 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <Shapes className="w-3.5 h-3.5" /> Shapes
+              </TabsTrigger>
+              <TabsTrigger
+                value="background"
+                data-ocid="editor.background.tab"
+                className="gap-1 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <Palette className="w-3.5 h-3.5" /> BG
+              </TabsTrigger>
+              <TabsTrigger
+                value="graphics"
+                data-ocid="editor.graphics.tab"
+                className="gap-1 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                <Image className="w-3.5 h-3.5" /> Graphics
+              </TabsTrigger>
+            </TabsList>
+
+            <ScrollArea className="flex-1">
+              {/* ─ Text Tab ─ */}
+              <TabsContent value="text" className="mt-0 p-4 space-y-5">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Add Text
+                  </Label>
+                  <textarea
+                    data-ocid="editor.textarea"
+                    value={newText}
+                    onChange={(e) => setNewText(e.target.value)}
+                    className="input-glow w-full rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm text-foreground resize-none placeholder:text-muted-foreground transition-all"
+                    rows={2}
+                    placeholder="Enter your message…"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Font Size
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      data-ocid="editor.font_size.toggle"
+                      value={[textFontSize]}
+                      onValueChange={([v]) => setTextFontSize(v)}
+                      min={12}
+                      max={60}
+                      step={2}
+                      className="flex-1"
+                    />
+                    <span className="text-sm w-8 text-right font-mono text-muted-foreground">
+                      {textFontSize}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Font Style
+                  </Label>
+                  <select
+                    data-ocid="editor.font.select"
+                    value={textFontFamily}
+                    onChange={(e) => setTextFontFamily(e.target.value)}
+                    className="input-glow w-full rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm text-foreground focus:outline-none transition-all"
+                  >
+                    {TEXT_FONTS.map((f, i) => (
+                      <option key={f} value={f} className="bg-card">
+                        {FONT_LABELS[i]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-violet-500 flex items-center gap-1">
+                    <span>🎨</span> Color
+                  </Label>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {TEXT_COLORS.map((c) => (
+                      <button
+                        type="button"
+                        key={c}
+                        onClick={() => setTextColor(c)}
+                        style={{ background: c }}
+                        className={`w-8 h-8 rounded-lg border-2 transition-transform hover:scale-110 ${
+                          textColor === c
+                            ? "border-primary scale-110 ring-2 ring-primary/30"
+                            : "border-border"
+                        }`}
+                        title={c}
+                      />
+                    ))}
+                  </div>
+                  <Input
+                    data-ocid="editor.color.input"
+                    type="color"
+                    value={textColor}
+                    onChange={(e) => setTextColor(e.target.value)}
+                    className="h-9 w-full cursor-pointer bg-background/60 border-border"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    data-ocid="editor.bold.toggle"
+                    variant={textBold ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTextBold((v) => !v)}
+                    className={`flex-1 font-bold ${
+                      textBold
+                        ? "bg-primary text-primary-foreground"
+                        : "border-border text-foreground hover:bg-secondary"
+                    }`}
+                  >
+                    B
+                  </Button>
+                  <Button
+                    data-ocid="editor.italic.toggle"
+                    variant={textItalic ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTextItalic((v) => !v)}
+                    className={`flex-1 italic ${
+                      textItalic
+                        ? "bg-primary text-primary-foreground"
+                        : "border-border text-foreground hover:bg-secondary"
+                    }`}
+                  >
+                    <em>I</em>
+                  </Button>
+                </div>
+
+                <Button
+                  data-ocid="editor.add_text.primary_button"
+                  onClick={addText}
+                  className="w-full gap-2 font-semibold"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, oklch(0.62 0.22 285), oklch(0.55 0.22 300))",
+                    color: "white",
+                    border: "none",
+                  }}
+                >
+                  <Plus className="w-4 h-4" /> Add Text
+                </Button>
+
+                {selectedTextEl && (
+                  <div className="mt-2 pt-4 border-t border-border space-y-3">
+                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      Edit Selected
+                    </Label>
+                    <textarea
+                      data-ocid="editor.edit_text.textarea"
+                      value={selectedTextEl.content}
+                      onChange={(e) =>
+                        updateElement(selectedTextEl.id, {
+                          content: e.target.value,
+                        })
+                      }
+                      className="input-glow w-full rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm text-foreground resize-none transition-all"
+                      rows={2}
+                    />
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground font-medium">
+                        Size
+                      </span>
+                      <Slider
+                        value={[selectedTextEl.fontSize]}
+                        onValueChange={([v]) =>
+                          updateElement(selectedTextEl.id, { fontSize: v })
+                        }
+                        min={10}
+                        max={72}
+                        step={2}
+                        className="flex-1"
+                      />
+                    </div>
+                    <div className="grid grid-cols-6 gap-1.5">
+                      {TEXT_COLORS.map((c) => (
+                        <button
+                          type="button"
+                          key={c}
+                          onClick={() =>
+                            updateElement(selectedTextEl.id, { color: c })
+                          }
+                          style={{ background: c }}
+                          className={`w-8 h-8 rounded-lg border-2 transition-transform hover:scale-110 ${
+                            selectedTextEl.color === c
+                              ? "border-primary scale-110"
+                              : "border-border"
+                          }`}
+                          title={c}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={selectedTextEl.bold ? "default" : "outline"}
+                        size="sm"
+                        onClick={() =>
+                          updateElement(selectedTextEl.id, {
+                            bold: !selectedTextEl.bold,
+                          })
+                        }
+                        className={`flex-1 font-bold ${
+                          selectedTextEl.bold
+                            ? "bg-primary text-primary-foreground"
+                            : "border-border text-foreground"
+                        }`}
+                      >
+                        B
+                      </Button>
+                      <Button
+                        variant={selectedTextEl.italic ? "default" : "outline"}
+                        size="sm"
+                        onClick={() =>
+                          updateElement(selectedTextEl.id, {
+                            italic: !selectedTextEl.italic,
+                          })
+                        }
+                        className={`flex-1 italic ${
+                          selectedTextEl.italic
+                            ? "bg-primary text-primary-foreground"
+                            : "border-border text-foreground"
+                        }`}
+                      >
+                        <em>I</em>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* ─ Shapes Tab ─ */}
+              <TabsContent value="shapes" className="mt-0 p-4 space-y-5">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Choose Shape
+                  </Label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {SHAPE_DEFS.map((s) => (
+                      <button
+                        type="button"
+                        key={s.id}
+                        onClick={() => setShapeType(s.id)}
+                        title={s.label}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all hover:scale-105 ${
+                          shapeType === s.id
+                            ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+                            : "border-border hover:border-primary/40"
+                        }`}
+                      >
+                        <span className="text-xl leading-none">{s.emoji}</span>
+                        <span className="text-[9px] text-muted-foreground font-medium leading-none">
+                          {s.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-violet-500 flex items-center gap-1">
+                    <span>🎨</span> Fill Color
+                  </Label>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {[
+                      "#f59e0b",
+                      "#ef4444",
+                      "#3b82f6",
+                      "#22c55e",
+                      "#8b5cf6",
+                      "#ec4899",
+                      "#ffffff",
+                      "#1a1a1a",
+                      "#d4af37",
+                      "#06b6d4",
+                      "#f97316",
+                      "#84cc16",
+                    ].map((c) => (
+                      <button
+                        type="button"
+                        key={c}
+                        onClick={() => setShapeColor(c)}
+                        style={{ background: c }}
+                        className={`w-8 h-8 rounded-lg border-2 transition-transform hover:scale-110 ${
+                          shapeColor === c
+                            ? "border-primary scale-110 ring-2 ring-primary/30"
+                            : "border-border"
+                        }`}
+                        title={c}
+                      />
+                    ))}
+                  </div>
+                  <Input
+                    data-ocid="editor.shape_color.input"
+                    type="color"
+                    value={shapeColor}
+                    onChange={(e) => setShapeColor(e.target.value)}
+                    className="h-9 w-full cursor-pointer bg-background/60 border-border"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Size
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      data-ocid="editor.shape_size.toggle"
+                      value={[shapeSize]}
+                      onValueChange={([v]) => setShapeSize(v)}
+                      min={5}
+                      max={40}
+                      step={1}
+                      className="flex-1"
+                    />
+                    <span className="text-sm w-8 text-right font-mono text-muted-foreground">
+                      {shapeSize}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                <div
+                  className="rounded-xl border border-border bg-background/30 p-4 flex items-center justify-center"
+                  style={{ minHeight: 80 }}
+                >
+                  <ShapeSVG
+                    shapeType={shapeType}
+                    fillColor={shapeColor}
+                    width={60}
+                    height={60}
+                  />
+                </div>
+
+                <Button
+                  data-ocid="editor.add_shape.primary_button"
+                  onClick={addShape}
+                  className="w-full gap-2 font-semibold"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, oklch(0.62 0.22 285), oklch(0.55 0.22 300))",
+                    color: "white",
+                    border: "none",
+                  }}
+                >
+                  <Plus className="w-4 h-4" /> Add Shape
+                </Button>
+
+                {selectedShapeEl && (
+                  <div className="mt-2 pt-4 border-t border-border space-y-3">
+                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      Edit Selected Shape
+                    </Label>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">
+                        Fill Color
+                      </Label>
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {[
+                          "#f59e0b",
+                          "#ef4444",
+                          "#3b82f6",
+                          "#22c55e",
+                          "#8b5cf6",
+                          "#ec4899",
+                          "#ffffff",
+                          "#1a1a1a",
+                          "#d4af37",
+                          "#06b6d4",
+                          "#f97316",
+                          "#84cc16",
+                        ].map((c) => (
+                          <button
+                            type="button"
+                            key={c}
+                            onClick={() =>
+                              updateElement(selectedShapeEl.id, {
+                                fillColor: c,
+                              })
+                            }
+                            style={{ background: c }}
+                            className={`w-8 h-8 rounded-lg border-2 transition-transform hover:scale-110 ${
+                              selectedShapeEl.fillColor === c
+                                ? "border-primary scale-110"
+                                : "border-border"
+                            }`}
+                            title={c}
+                          />
+                        ))}
+                      </div>
+                      <Input
+                        type="color"
+                        value={selectedShapeEl.fillColor}
+                        onChange={(e) =>
+                          updateElement(selectedShapeEl.id, {
+                            fillColor: e.target.value,
+                          })
+                        }
+                        className="h-9 w-full cursor-pointer bg-background/60 border-border"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground font-medium">
+                        Size
+                      </span>
+                      <Slider
+                        value={[selectedShapeEl.width]}
+                        onValueChange={([v]) =>
+                          updateElement(selectedShapeEl.id, {
+                            width: v,
+                            height: v,
+                          })
+                        }
+                        min={5}
+                        max={50}
+                        step={1}
+                        className="flex-1"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground font-medium">
+                        Rotate
+                      </span>
+                      <Slider
+                        value={[selectedShapeEl.rotation]}
+                        onValueChange={([v]) =>
+                          updateElement(selectedShapeEl.id, { rotation: v })
+                        }
+                        min={0}
+                        max={360}
+                        step={5}
+                        className="flex-1"
+                      />
+                      <span className="text-xs font-mono text-muted-foreground w-8 text-right">
+                        {selectedShapeEl.rotation}°
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* ─ Background Tab ─ */}
+              <TabsContent value="background" className="mt-0 p-4 space-y-5">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Solid Colors
+                  </Label>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {BACKGROUND_COLORS.map((c) => (
+                      <button
+                        type="button"
+                        key={c}
+                        onClick={() =>
+                          setCard((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  background: c,
+                                  backgroundType: "solid",
+                                }
+                              : prev,
+                          )
+                        }
+                        style={{ background: c }}
+                        className={`w-9 h-9 rounded-lg border-2 transition-transform hover:scale-110 ${
+                          card.background === c
+                            ? "border-primary scale-110 ring-2 ring-primary/30"
+                            : "border-border"
+                        }`}
+                        title={c}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      data-ocid="editor.bg_color.input"
+                      type="color"
+                      value={
+                        card.backgroundType === "solid"
+                          ? card.background
+                          : "#ffffff"
+                      }
+                      onChange={(e) =>
+                        setCard((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                background: e.target.value,
+                                backgroundType: "solid",
+                              }
+                            : prev,
+                        )
+                      }
+                      className="h-9 flex-1 cursor-pointer bg-background/60 border-border"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Custom
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Gradients
+                  </Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {BACKGROUND_GRADIENTS.map((g) => (
+                      <button
+                        type="button"
+                        key={g.id}
+                        onClick={() =>
+                          setCard((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  background: g.value,
+                                  backgroundType: "gradient",
+                                }
+                              : prev,
+                          )
+                        }
+                        style={{ background: g.value }}
+                        className={`h-12 rounded-lg border-2 transition-transform hover:scale-105 ${
+                          card.background === g.value
+                            ? "border-primary scale-105 ring-2 ring-primary/30"
+                            : "border-border"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    🎨 Patterns
+                  </Label>
+                  <div className="grid grid-cols-4 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCard((prev) =>
+                          prev ? { ...prev, patternStyle: undefined } : prev,
+                        )
+                      }
+                      className={`h-12 rounded-lg border-2 text-xs font-medium transition-transform hover:scale-105 flex items-center justify-center ${
+                        !card.patternStyle
+                          ? "border-primary scale-105 ring-2 ring-primary/30 bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground"
+                      }`}
+                    >
+                      None
+                    </button>
+                    {CARD_PATTERNS.map((p) => {
+                      const pc = card.patternColor || "rgba(0,0,0,0.18)";
+                      const previewStyle = {
+                        backgroundImage: p.css(pc),
+                        backgroundSize: PATTERN_BG_SIZES[p.id],
+                        backgroundPosition: PATTERN_BG_POSITIONS[p.id],
+                        backgroundColor: "#e0e0e0",
+                      };
+                      return (
+                        <button
+                          type="button"
+                          key={p.id}
+                          onClick={() =>
+                            setCard((prev) =>
+                              prev ? { ...prev, patternStyle: p.id } : prev,
+                            )
+                          }
+                          style={previewStyle}
+                          className={`h-12 rounded-lg border-2 transition-transform hover:scale-105 flex flex-col items-center justify-center gap-0.5 ${
+                            card.patternStyle === p.id
+                              ? "border-primary scale-105 ring-2 ring-primary/30"
+                              : "border-border"
+                          }`}
+                          title={p.label}
+                        >
+                          <span className="text-xs font-bold drop-shadow bg-black/20 px-1 rounded text-white">
+                            {p.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {card.patternStyle && (
+                    <div className="flex gap-2 items-center mt-2">
+                      <Label className="text-xs text-muted-foreground whitespace-nowrap">
+                        Pattern Color
+                      </Label>
+                      <Input
+                        data-ocid="editor.pattern_color.input"
+                        type="color"
+                        value={
+                          card.patternColor?.startsWith("#")
+                            ? card.patternColor
+                            : "#000000"
+                        }
+                        onChange={(e) => {
+                          const hex = e.target.value;
+                          setCard((prev) =>
+                            prev ? { ...prev, patternColor: hex } : prev,
+                          );
+                        }}
+                        className="h-9 flex-1 cursor-pointer bg-background/60 border-border"
+                      />
+                      <Input
+                        data-ocid="editor.pattern_opacity.input"
+                        type="range"
+                        min={10}
+                        max={100}
+                        defaultValue={30}
+                        onChange={(e) => {
+                          const pct = Number(e.target.value);
+                          const hex = card.patternColor?.startsWith("#")
+                            ? card.patternColor
+                            : "#000000";
+                          const r = Number.parseInt(hex.slice(1, 3), 16);
+                          const g = Number.parseInt(hex.slice(3, 5), 16);
+                          const b = Number.parseInt(hex.slice(5, 7), 16);
+                          const rgba = `rgba(${r},${g},${b},${(pct / 100).toFixed(2)})`;
+                          setCard((prev) =>
+                            prev ? { ...prev, patternColor: rgba } : prev,
+                          );
+                        }}
+                        className="h-9 flex-1 cursor-pointer"
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        Opacity
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* ─ Graphics Tab ─ */}
+              <TabsContent value="graphics" className="mt-0 p-4 space-y-4">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Graphics
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Click to add to card
+                  </p>
+                </div>
+                {/* Category filters */}
+                <div className="flex gap-1.5 flex-wrap">
+                  {GRAPHICS_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      data-ocid="editor.graphics.tab"
+                      onClick={() => setGraphicsCategory(cat)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                        graphicsCategory === cat
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                {/* Emoji grid */}
+                <div className="grid grid-cols-4 gap-2">
+                  {GRAPHICS.filter((g) => g.category === graphicsCategory).map(
+                    (g, i) => (
+                      <button
+                        key={g.emoji}
+                        type="button"
+                        data-ocid={`editor.graphics.item.${i + 1}`}
+                        onClick={() => {
+                          if (!card) return;
+                          const newEl: TextElement = {
+                            id: crypto.randomUUID(),
+                            type: "text",
+                            content: g.emoji,
+                            x: 50,
+                            y: 50,
+                            fontSize: 40,
+                            color: "#000000",
+                            fontFamily: "sans-serif",
+                            bold: false,
+                            italic: false,
+                          };
+                          setCard((prev) =>
+                            prev
+                              ? { ...prev, elements: [...prev.elements, newEl] }
+                              : prev,
+                          );
+                          setSelectedId(newEl.id);
+                          toast.success("Graphic added!");
+                        }}
+                        className="flex items-center justify-center text-2xl rounded-xl border border-border bg-card hover:bg-primary/10 hover:border-primary/50 hover:scale-110 transition-all p-2 aspect-square"
+                      >
+                        {g.emoji}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </TabsContent>
+            </ScrollArea>
+          </Tabs>
+        </aside>
+
+        {/* Canvas Area */}
+        <main className="flex-1 canvas-grid flex items-center justify-center p-8 overflow-auto">
+          <div
+            className="relative"
+            style={{
+              width: 560,
+              height: 392,
+              boxShadow:
+                "0 0 0 1px oklch(0.28 0.02 260), 0 25px 60px rgba(0,0,0,0.6), 0 0 40px oklch(0.62 0.22 285 / 0.08)",
+              borderRadius: 12,
+              overflow: "hidden",
+              background: card.background,
+              flexShrink: 0,
+            }}
+            onClick={() => setSelectedId(null)}
+            onKeyDown={(e) => e.key === "Escape" && setSelectedId(null)}
+            role="presentation"
+          >
+            {card.patternStyle &&
+              (() => {
+                const p = CARD_PATTERNS.find((x) => x.id === card.patternStyle);
+                const pc = card.patternColor || "rgba(0,0,0,0.18)";
+                if (!p) return null;
+                return (
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      backgroundImage: p.css(pc),
+                      backgroundSize: PATTERN_BG_SIZES[card.patternStyle!],
+                      backgroundPosition:
+                        PATTERN_BG_POSITIONS[card.patternStyle!],
+                    }}
+                  />
+                );
+              })()}
+            {card.elements.map((el) => (
+              <CardPreviewElement
+                key={el.id}
+                el={el}
+                selected={el.id === selectedId}
+                onSelect={setSelectedId}
+                onDrag={handleDrag}
+              />
+            ))}
+            {card.elements.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <p className="text-white/40 text-sm font-medium pointer-events-none">
+                  Add text or shapes from the sidebar
+                </p>
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+      <Toaster />
+    </div>
+  );
+}

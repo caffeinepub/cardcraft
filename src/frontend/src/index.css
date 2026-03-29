@@ -1,0 +1,160 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/assets/fonts/BricolageGrotesque.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("/assets/fonts/Satoshi.woff2") format("woff2");
+  font-weight: 300 700;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.75rem;
+
+    /* Dark studio theme */
+    --background: 0.13 0.06 285;
+    --foreground: 0.97 0.005 260;
+
+    --card: 0.17 0.055 285;
+    --card-foreground: 0.97 0.005 260;
+
+    --popover: 0.17 0.055 285;
+    --popover-foreground: 0.97 0.005 260;
+
+    /* Vivid violet primary */
+    --primary: 0.62 0.22 285;
+    --primary-foreground: 0.99 0 0;
+
+    --secondary: 0.22 0.05 285;
+    --secondary-foreground: 0.88 0.01 260;
+
+    --muted: 0.2 0.04 285;
+    --muted-foreground: 0.75 0.01 260;
+
+    --accent: 0.62 0.22 285;
+    --accent-foreground: 0.99 0 0;
+
+    --destructive: 0.55 0.22 25;
+    --destructive-foreground: 0.99 0 0;
+
+    --border: 0.28 0.04 285;
+    --input: 0.28 0.04 285;
+    --ring: 0.62 0.22 285;
+
+    --chart-1: 0.62 0.22 285;
+    --chart-2: 0.7 0.18 200;
+    --chart-3: 0.65 0.18 160;
+    --chart-4: 0.7 0.2 50;
+    --chart-5: 0.72 0.18 320;
+
+    --sidebar: 0.16 0.05 285;
+    --sidebar-foreground: 0.97 0.005 260;
+    --sidebar-primary: 0.62 0.22 285;
+    --sidebar-primary-foreground: 0.99 0 0;
+    --sidebar-accent: 0.22 0.02 260;
+    --sidebar-accent-foreground: 0.88 0.01 260;
+    --sidebar-border: 0.28 0.02 260;
+    --sidebar-ring: 0.62 0.22 285;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Satoshi", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Animated mesh gradient for hero */
+@keyframes mesh-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.hero-gradient {
+  background: linear-gradient(
+    130deg,
+    oklch(0.13 0.01 260) 0%,
+    oklch(0.17 0.06 290) 30%,
+    oklch(0.13 0.01 260) 55%,
+    oklch(0.15 0.04 270) 80%,
+    oklch(0.13 0.01 260) 100%
+  );
+  background-size: 300% 300%;
+  animation: mesh-shift 8s ease infinite;
+}
+
+/* Canvas grid pattern */
+.canvas-grid {
+  background-image: linear-gradient(
+      oklch(0.28 0.02 260 / 0.4) 1px,
+      transparent 1px
+    ), linear-gradient(90deg, oklch(0.28 0.02 260 / 0.4) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Template card hover glow */
+.template-card:hover {
+  box-shadow: 0 0 0 1px oklch(0.62 0.22 285 / 0.4), 0 8px 32px
+    oklch(0.62 0.22 285 / 0.12);
+}
+
+/* Input glow on focus */
+.input-glow:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px oklch(0.62 0.22 285 / 0.5);
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
