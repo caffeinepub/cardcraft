@@ -18,14 +18,12 @@ import {
   Palette,
   Plus,
   Search,
-  Settings,
   Sparkles,
   Trash2,
   Type,
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useActor } from "./hooks/useActor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -6723,131 +6721,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("text");
   const [graphicsCategory, setGraphicsCategory] = useState("Celebrations");
 
-  // AI generation state
-  const { actor } = useActor();
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-
-  const generateWithAI = async () => {
-    if (!aiPrompt.trim()) {
-      toast.error("Please describe the card you want to create.");
-      return;
-    }
-    if (!actor) {
-      toast.error("Connection not ready. Please try again.");
-      return;
-    }
-    setAiLoading(true);
-    try {
-      const result = await actor.generateCard(aiPrompt.trim());
-      let parsed: {
-        title?: string;
-        subtitle?: string;
-        message?: string;
-        suggestedTemplate?: string;
-        backgroundColor?: string;
-        textColor?: string;
-      };
-      try {
-        parsed = JSON.parse(result);
-      } catch {
-        toast.error("AI returned an unexpected response. Please try again.");
-        return;
-      }
-      // Find matching template
-      const matchedTemplate = parsed.suggestedTemplate
-        ? (TEMPLATES.find(
-            (t) =>
-              t.category
-                .toLowerCase()
-                .includes(parsed.suggestedTemplate!.toLowerCase()) ||
-              t.id
-                .toLowerCase()
-                .includes(parsed.suggestedTemplate!.toLowerCase()),
-          ) ?? TEMPLATES[0])
-        : TEMPLATES[0];
-
-      // Build elements from AI response
-      const baseElements = matchedTemplate.previewElements.map((el) => ({
-        id: genId(),
-        type: "text" as const,
-        content: el.text,
-        x: el.x,
-        y: el.y,
-        fontSize: el.fontSize,
-        color: parsed.textColor ?? el.color,
-        fontFamily: "sans-serif",
-        bold: el.bold ?? false,
-        italic: el.italic ?? false,
-      }));
-
-      // Override first element with AI title, add subtitle and message as new elements
-      const aiElements = [...baseElements];
-      if (parsed.title && aiElements.length > 0) {
-        aiElements[0] = {
-          ...aiElements[0],
-          content: parsed.title,
-          color: parsed.textColor ?? aiElements[0].color,
-        };
-      }
-      if (parsed.subtitle) {
-        aiElements.push({
-          id: genId(),
-          type: "text" as const,
-          content: parsed.subtitle,
-          x: 50,
-          y: 62,
-          fontSize: 18,
-          color: parsed.textColor ?? aiElements[0]?.color ?? "#ffffff",
-          fontFamily: "sans-serif",
-          bold: false,
-          italic: true,
-        });
-      }
-      if (parsed.message) {
-        aiElements.push({
-          id: genId(),
-          type: "text" as const,
-          content: parsed.message,
-          x: 50,
-          y: 75,
-          fontSize: 14,
-          color: parsed.textColor ?? aiElements[0]?.color ?? "#ffffff",
-          fontFamily: "sans-serif",
-          bold: false,
-          italic: false,
-        });
-      }
-
-      setCard({
-        id: genId(),
-        templateId: matchedTemplate.id,
-        category: matchedTemplate.category,
-        background: parsed.backgroundColor ?? matchedTemplate.background,
-        backgroundType: matchedTemplate.backgroundType,
-        patternStyle: matchedTemplate.patternStyle,
-        patternColor: undefined,
-        overlayImage: matchedTemplate.overlayImage,
-        elements: aiElements,
-      });
-      setSelectedId(null);
-      setView("editor");
-      toast.success("✨ Card generated! Customize it further below.");
-    } catch (err) {
-      console.error(err);
-      const errMsg = err instanceof Error ? err.message : String(err);
-      if (errMsg.includes("API key not set") || errMsg.includes("api key")) {
-        toast.error("Please set your OpenAI API key first (click the ⚙️ icon).");
-      } else {
-        toast.error("Failed to generate card. Please try again.");
-      }
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
   // Text controls
   const [newText, setNewText] = useState("Your message here");
   const [textFontSize, setTextFontSize] = useState(24);
@@ -7135,112 +7008,6 @@ export default function App() {
             </div>
           </section>
 
-          {/* AI Generator Section */}
-          <section className="mb-10">
-            <div
-              className="relative rounded-2xl overflow-hidden p-8"
-              style={{
-                background:
-                  "linear-gradient(135deg, oklch(0.28 0.12 285 / 0.95), oklch(0.22 0.15 300 / 0.95))",
-                boxShadow:
-                  "0 0 60px oklch(0.62 0.22 285 / 0.25), inset 0 1px 0 oklch(1 0 0 / 0.1)",
-                border: "1px solid oklch(0.62 0.22 285 / 0.3)",
-              }}
-            >
-              {/* Decorative glow blobs */}
-              <div
-                className="pointer-events-none absolute -top-8 -right-8 w-48 h-48 rounded-full opacity-30"
-                style={{
-                  background:
-                    "radial-gradient(circle, oklch(0.72 0.22 285), transparent)",
-                }}
-              />
-              <div
-                className="pointer-events-none absolute -bottom-6 -left-6 w-36 h-36 rounded-full opacity-20"
-                style={{
-                  background:
-                    "radial-gradient(circle, oklch(0.78 0.18 200), transparent)",
-                }}
-              />
-
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-1">
-                  <Sparkles className="w-5 h-5 text-yellow-300" />
-                  <span className="text-yellow-300 text-xs font-bold tracking-widest uppercase">
-                    AI Card Generator
-                  </span>
-                  <button
-                    data-ocid="ai.open_modal_button"
-                    onClick={() => setApiKeyModalOpen(true)}
-                    className="ml-auto p-1 rounded-lg text-white/50 hover:text-white/90 hover:bg-white/10 transition-colors"
-                    type="button"
-                    title="Set OpenAI API Key"
-                  >
-                    <Settings className="w-4 h-4" />
-                  </button>
-                </div>
-                <h2 className="text-white text-2xl font-bold mb-1">
-                  Describe your card, we'll create it
-                </h2>
-                <p className="text-white/60 text-sm mb-5">
-                  E.g. "Birthday card for my mom who loves flowers" or "Eid
-                  Mubarak card with golden theme"
-                </p>
-
-                <div className="flex gap-3 flex-col sm:flex-row">
-                  <textarea
-                    data-ocid="ai.textarea"
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        generateWithAI();
-                      }
-                    }}
-                    placeholder="Describe the card you want to create…"
-                    rows={2}
-                    className="flex-1 resize-none rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-violet-400/60 transition-all"
-                    style={{
-                      background: "oklch(1 0 0 / 0.08)",
-                      border: "1px solid oklch(1 0 0 / 0.15)",
-                    }}
-                  />
-                  <Button
-                    data-ocid="ai.primary_button"
-                    onClick={generateWithAI}
-                    disabled={aiLoading || !aiPrompt.trim()}
-                    className="self-end sm:self-auto whitespace-nowrap gap-2 rounded-xl px-6 py-3 h-auto font-semibold text-sm"
-                    style={{
-                      background:
-                        aiLoading || !aiPrompt.trim()
-                          ? "oklch(0.5 0.1 285 / 0.5)"
-                          : "linear-gradient(135deg, oklch(0.72 0.22 285), oklch(0.62 0.22 310))",
-                      color: "white",
-                      border: "none",
-                      boxShadow:
-                        aiLoading || !aiPrompt.trim()
-                          ? "none"
-                          : "0 4px 20px oklch(0.62 0.22 285 / 0.4)",
-                    }}
-                  >
-                    {aiLoading ? (
-                      <>
-                        <span className="inline-block w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                        Generating…
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        Generate Card
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </section>
-
           {/* Search + Category Filter */}
           <div className="mb-10 space-y-4">
             <div className="relative max-w-md mx-auto">
@@ -7322,73 +7089,6 @@ export default function App() {
             caffeine.ai
           </a>
         </footer>
-        <Dialog open={apiKeyModalOpen} onOpenChange={setApiKeyModalOpen}>
-          <DialogContent data-ocid="ai.dialog" className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Settings className="w-5 h-5" />
-                OpenAI API Key
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <p className="text-sm text-muted-foreground">
-                Enter your OpenAI API key to enable AI card generation.{" "}
-                <a
-                  href="https://platform.openai.com/api-keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline text-violet-500 hover:text-violet-600"
-                >
-                  Get one at platform.openai.com
-                </a>
-              </p>
-              <div className="space-y-2">
-                <Label htmlFor="api-key-input">API Key</Label>
-                <Input
-                  data-ocid="ai.input"
-                  id="api-key-input"
-                  type="password"
-                  placeholder="sk-..."
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Your key is stored securely in the app's backend canister.
-              </p>
-              <div className="flex justify-end gap-2">
-                <Button
-                  data-ocid="ai.cancel_button"
-                  variant="outline"
-                  onClick={() => setApiKeyModalOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  data-ocid="ai.save_button"
-                  disabled={!apiKeyInput.trim()}
-                  onClick={async () => {
-                    if (!actor) {
-                      toast.error("Connection not ready. Please try again.");
-                      return;
-                    }
-                    try {
-                      await actor.setApiKey(apiKeyInput.trim());
-                      toast.success("API key saved successfully!");
-                      setApiKeyModalOpen(false);
-                      setApiKeyInput("");
-                    } catch (err) {
-                      console.error(err);
-                      toast.error("Failed to save API key. Please try again.");
-                    }
-                  }}
-                >
-                  Save Key
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
         <Toaster />
       </div>
     );
@@ -8049,75 +7749,6 @@ export default function App() {
         </main>
       </div>
       <Toaster />
-
-      {/* API Key Modal */}
-      <Dialog open={apiKeyModalOpen} onOpenChange={setApiKeyModalOpen}>
-        <DialogContent data-ocid="ai.dialog" className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5" />
-              OpenAI API Key
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">
-              Enter your OpenAI API key to enable AI card generation.{" "}
-              <a
-                href="https://platform.openai.com/api-keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline text-violet-500 hover:text-violet-600"
-              >
-                Get one at platform.openai.com
-              </a>
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="api-key-input">API Key</Label>
-              <Input
-                data-ocid="ai.input"
-                id="api-key-input"
-                type="password"
-                placeholder="sk-..."
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Your key is stored securely in the app's backend canister.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button
-                data-ocid="ai.cancel_button"
-                variant="outline"
-                onClick={() => setApiKeyModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                data-ocid="ai.save_button"
-                disabled={!apiKeyInput.trim()}
-                onClick={async () => {
-                  if (!actor) {
-                    toast.error("Connection not ready. Please try again.");
-                    return;
-                  }
-                  try {
-                    await actor.setApiKey(apiKeyInput.trim());
-                    toast.success("API key saved successfully!");
-                    setApiKeyModalOpen(false);
-                    setApiKeyInput("");
-                  } catch (err) {
-                    console.error(err);
-                    toast.error("Failed to save API key. Please try again.");
-                  }
-                }}
-              >
-                Save Key
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
